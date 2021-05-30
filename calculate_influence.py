@@ -3,20 +3,19 @@ import json
 import time
 
 import numpy as np
-import jax
 import jax.numpy as jnp
 
-from jax import jvp
-from jax.tree_util import tree_flatten, tree_leaves
-
-from jax import grad, jit, vmap, value_and_grad
+from jax import vmap
 from jax import random
 
-from jax.scipy.special import logsumexp
 from jax.experimental import optimizers
 
-from torch.utils import data
 from functools import partial
+
+from influence import get_s_test, get_influence
+from data_loader import one_hot, SentenceDataset, SentenceLoader
+from model import init_network_params, update, accuracy
+from model import batched_predict
 
 
 dataset = json.loads(uploaded['chatbot_intent_classifier_data.json'])
@@ -57,7 +56,8 @@ num_epochs = 20
 batch_size = 64
 
 training_dataset = SentenceDataset(training_set)
-training_generator = SentenceLoader(training_dataset, shuffle=True, batch_size=batch_size, num_workers=0)
+training_generator = SentenceLoader(training_dataset, shuffle=True,
+                                    batch_size=batch_size, num_workers=0)
 
 params = init_network_params(layer_sizes, random.PRNGKey(42))
 opt_init, opt_update, get_params = optimizers.adam(step_size)
@@ -67,11 +67,13 @@ for epoch in range(num_epochs):
     start_time = time.time()
     for x, y in training_generator:
         y = one_hot(y, n_targets)
-        params, opt_state = update(epoch, get_params(opt_state), x, y, opt_state)
+        params, opt_state = update(epoch, get_params(opt_state),
+                                   x, y, opt_state)
     epoch_time = time.time() - start_time
 
     train_acc = accuracy(get_params(opt_state), train_sentences, train_labels)
-    test_acc = accuracy(get_params(opt_state), validation_sentences, validation_labels)
+    test_acc = accuracy(get_params(opt_state), validation_sentences,
+                        validation_labels)
     print("Epoch {} in {:0.2f} sec".format(epoch, epoch_time))
     print("Training set accuracy {}".format(train_acc))
     print("Test set accuracy {}".format(test_acc))
@@ -81,11 +83,13 @@ testing_sentences = sentence_model.encode(testing_sentences)
 testing_labels = [i['data']['intent'] for i in testing_set]
 testing_labels = np.array([class_map[i] for i in testing_labels])
 
-predicted_class = jnp.argmax(batched_predict(params, testing_sentences), axis=1)
+predicted_class = jnp.argmax(batched_predict(params, testing_sentences),
+                             axis=1)
 logprob = batched_predict(params, testing_sentences)
 pred_prob = jnp.exp(logprob)
 
-wrong_indices = [i for i, x in enumerate(testing_labels != predicted_class) if x]
+wrong_indices = [i for i, x
+                 in enumerate(testing_labels != predicted_class) if x]
 print(wrong_indices)
 
 
@@ -101,17 +105,21 @@ print("True label prob:", pred_prob[testing_id][label_class])
 print("Predicted label:", inv_class_map[int(predicted_class[testing_id])])
 print("Predicted prob:", jnp.max(pred_prob[testing_id]))
 
-z_loader = SentenceLoader(training_dataset, shuffle=True, batch_size=1, num_workers=0)
+z_loader = SentenceLoader(training_dataset, shuffle=True,
+                          batch_size=1, num_workers=0)
 
-s_test = get_s_test(testing_sentences[testing_id], testing_labels[testing_id], params, z_loader)
+s_test = get_s_test(testing_sentences[testing_id], testing_labels[testing_id],
+                    params, z_loader)
 
-z_loader = SentenceLoader(training_dataset, shuffle=False, batch_size=8, num_workers=0)
+z_loader = SentenceLoader(training_dataset, shuffle=False, batch_
+                          size=8, num_workers=0)
 
 influences = []
 for i, (x, t) in enumerate(z_loader):
     t = one_hot(t, n_targets)
     z = [i for i in zip(x, t)]
-    tmp_influence = vmap(partial(get_influence, params=params, s_test=s_test, N=len(training_set)), in_axes=(0, 0))(x, t)
+    tmp_influence = vmap(partial(get_influence, params=params, s_test=s_test,
+                                 N=len(training_set)), in_axes=(0, 0))(x, t)
     influences.extend(tmp_influence)
     if i % 50 == 0:
         print(i)
