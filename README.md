@@ -1,1 +1,3 @@
 # jax_influence_function
+
+A Google Colab notebook that trains a neural net in JAX on the [Atis Intent dataset](https://www.kaggle.com/hassanamin/atis-airlinetravelinformationsystem) and uses the [Understanding Black-box Predictions via Influence Functions](https://arxiv.org/abs/1703.04730) paper to generate influence scores for each data point in the training set for a specific test point. The notebook ends by retraining the net while removing the least helpful points, to demonstrate that performance on the test point has increased.
